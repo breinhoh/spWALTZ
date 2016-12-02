@@ -1,28 +1,34 @@
 // app.js
+"use strict";
 
 var app = angular.module('crawler',[]);
 
 app.controller("formCtrl", function ($scope, $http) {
 
-    $scope.sendData = function () {
-       // use $.param jQuery function to serialize data from JSON 
-        var data = $.param({
+
+    /********** postData *************/
+    $scope.postData = function () {
+        var data = {
             url: $scope.formData.inputURL,
             keyword: $scope.formData.keyword,
             depth: $scope.formData.depth,
             searchmode: $scope.formData.searchmode
-        });
-    
+        };
         var config = {
             headers : {
-                'Content-Type': 'application/x-www-form-urlencoded;charset=utf-8;'
+                'Content-Type': 'application/json;charset=utf-8;'
             }
         }
 
-        $http.post('http://requestb.in/oicjploi', data, config)
+        $http.post('http://138.197.207.83:5000/api/requests', data, config)
         .success(function (data, status, headers, config) {
-            //$scope.PostDataResponse = data;
+            $scope.ResponseDetails = data;
             console.log(data);
+            console.log(data.id);
+            var data_id = data.id;   
+            var row_ctr = 0;
+            getData(data_id, row_ctr);
+
         })
         .error(function (data, status, header, config) {
             $scope.ResponseDetails = "Data: " + data +
@@ -31,4 +37,109 @@ app.controller("formCtrl", function ($scope, $http) {
                 "<hr />config: " + config;
         });
     };
+
+
+    /************ getData ************/
+    function getData(data_id, row_ctr) {
+        var config = {
+            headers : {
+                'Content-Type': 'application/json;charset=utf-8;'
+            }
+        }
+
+        wait(5000);
+        $http.get('http://138.197.207.83:5000/api/results/' + data_id + '/rows', config)
+                .success(function (data, status, headers, config) {
+                if (data && row_ctr == 0) {
+                    $http.get('http://138.197.207.83:5000/api/results/' + data_id, config)
+                        .success(function (data, status, headers, config) {
+                        createGraph(data);   
+                    });
+                } else if (data && row_ctr > 0 && row_ctr < data.rows + 1000) {
+                    row_rqst = row_ctr + 1000;
+                    getDataSection(data_id, row_rqst);
+                    getData(data_id, row_rqst);
+                } else {
+                    row_rqst = data.rows;
+                    getDataSection(data_id, row_rqst);
+                }
+        });       
+    };
+
+
+    /************ getDataSection ************/
+    function getDataSection(data_id, row_rqst) {
+        $http.get('http://138.197.207.83:5000/api/results/' + data_id + '/' + row_rqst, config)
+                .success(function (data, status, headers, config) {
+                if (data) {
+                    createGraph(data); 
+                } else {
+                    wait(10000);
+                    getDataSection(data_id, row_rqst);
+                }  
+            });
+    }
+
+    /********** createGraph *************/
+    function createGraph(crawler_data) {
+        var crawler = cytoscape({
+            container: document.getElementById('crawler'),
+            elements: [],
+            style: [
+            {
+              selector: 'node',
+              style: {
+                shape: 'circle',
+                'background-color': '#1b24d1',
+              }
+            }],
+        });
+
+        for (var i = 0; i < crawler_data.edges.length; i++) {
+            addToGraph(crawler_data.edges[i], crawler);
+        }  
+
+        crawler.layout({
+            name: 'circle'
+        });  
+    };
+
+
+    /*********** addToGraph *************/
+    function addToGraph(linkIn, graphIn) {
+      if ((graphIn.getElementById(linkIn.src_url)).length == 0) {
+        graphIn.add({
+            data: { id: linkIn.src_url }
+          }
+        );
+      }
+      if ((graphIn.getElementById(linkIn.dst_url)).length == 0) {
+        graphIn.add({
+            data: { id: linkIn.dst_url }
+          }
+        );
+      }
+      var source = linkIn.src_url;
+      graphIn.add({
+        data: {
+          id: linkIn.id,
+          source: source,
+          target: (linkIn.dst_url)
+        }
+      });
+    };
+
+
+    /*********** wait *************/
+    function wait(ms){
+        var start = new Date().getTime();
+        var end = start;
+        while(end < start + ms) {
+            end = new Date().getTime();
+      }
+    }
+
 });
+
+
+    
